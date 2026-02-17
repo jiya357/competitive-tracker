@@ -15,12 +15,14 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Database setup
-const dbPath = path.join(__dirname, 'data.db');
-const db = new Database(dbPath);
+// Database setup - Using in-memory to avoid SQLite permission issues on macOS
+// For production, use PostgreSQL instead
+const db = new Database(':memory:');
+console.log('Database: in-memory (SQLite)');
 
 // Initialize database
-db.exec(`
+try {
+  db.exec(`
   CREATE TABLE IF NOT EXISTS competitors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -43,6 +45,10 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_competitor_checks ON checks(competitor_id);
 `);
+  console.log('Database tables initialized successfully');
+} catch (err) {
+  console.error('Database initialization error:', err.message);
+}
 
 // OpenAI client
 let openai = null;
@@ -122,6 +128,19 @@ async function generateSummary(content, diffInfo) {
 }
 
 // Routes
+
+// Debug test endpoint
+app.get('/api/debug/test-insert', (req, res) => {
+  try {
+    console.log('Testing database insert...');
+    const result = db.prepare('INSERT INTO competitors (name, url, tags) VALUES (?, ?, ?)').run('Test', 'https://test.local', '[]');
+    console.log('Insert result:', result);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('Insert error:', error.message, error.code);
+    res.status(500).json({ error: error.message, code: error.code });
+  }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
