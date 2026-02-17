@@ -15,6 +15,10 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Serve static files from React build (production)
+const clientBuildPath = path.join(__dirname, '../client/dist');
+app.use(express.static(clientBuildPath));
+
 // PostgreSQL Pool setup
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost/competitor_tracker',
@@ -306,6 +310,11 @@ app.get('/api/competitors/:id/history', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Fallback to React for client-side routing (must be after all API routes)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
