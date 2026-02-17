@@ -106,7 +106,7 @@ async function generateSummary(content, diffInfo) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -128,19 +128,6 @@ async function generateSummary(content, diffInfo) {
 }
 
 // Routes
-
-// Debug test endpoint
-app.get('/api/debug/test-insert', (req, res) => {
-  try {
-    console.log('Testing database insert...');
-    const result = db.prepare('INSERT INTO competitors (name, url, tags) VALUES (?, ?, ?)').run('Test', 'https://test.local', '[]');
-    console.log('Insert result:', result);
-    res.json({ success: true, result });
-  } catch (error) {
-    console.error('Insert error:', error.message, error.code);
-    res.status(500).json({ error: error.message, code: error.code });
-  }
-});
 
 // Health check
 app.get('/api/health', (req, res) => {
