@@ -2,53 +2,65 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const axios = require('axios');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const path = require('path');
 const { OpenAI } = require('openai');
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Database setup - Using in-memory to avoid SQLite permission issues on macOS
-// For production, use PostgreSQL instead
-const db = new Database(':memory:');
-console.log('Database: in-memory (SQLite)');
+// PostgreSQL Pool setup
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://localhost/competitor_tracker',
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 
-// Initialize database
-try {
-  db.exec(`
-  CREATE TABLE IF NOT EXISTS competitors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    url TEXT NOT NULL UNIQUE,
-    tags TEXT DEFAULT '[]',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+console.log(`Database: ${process.env.DATABASE_URL ? 'PostgreSQL (production)' : 'PostgreSQL (local development)'}`);
 
-  CREATE TABLE IF NOT EXISTS checks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    competitor_id INTEGER NOT NULL,
-    content TEXT,
-    hash TEXT,
-    checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    summary TEXT,
-    diff TEXT,
-    FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE
-  );
+// Initialize database tables
+async function initializeDatabase() {
+  try {
+    const client = await pool.connect();
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS competitors (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        tags JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-  CREATE INDEX IF NOT EXISTS idx_competitor_checks ON checks(competitor_id);
-`);
-  console.log('Database tables initialized successfully');
-} catch (err) {
-  console.error('Database initialization error:', err.message);
+      CREATE TABLE IF NOT EXISTS checks (
+        id SERIAL PRIMARY KEY,
+        competitor_id INTEGER NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+        content TEXT,
+        hash TEXT,
+        checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        summary TEXT,
+        diff TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_competitor_checks ON checks(competitor_id);
+    `);
+    
+    console.log('Database tables initialized successfully');
+    client.release();
+  } catch (err) {
+    console.error('Database initialization error:', err.message);
+    process.exit(1);
+  }
 }
+
+// Initialize on startup
+initializeDatabase();
 
 // OpenAI client
 let openai = null;
@@ -130,7 +142,7 @@ async function generateSummary(content, diffInfo) {
 // Routes
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -140,7 +152,7 @@ app.get('/api/health', (req, res) => {
   };
 
   try {
-    db.prepare('SELECT 1').get();
+    await pool.query('SELECT 1');
     health.database = 'connected';
   } catch (e) {
     health.database = 'error';
@@ -156,23 +168,21 @@ app.get('/api/health', (req, res) => {
 });
 
 // Get all competitors
-app.get('/api/competitors', (req, res) => {
+app.get('/api/competitors', async (req, res) => {
   try {
-    const competitors = db
-      .prepare(
-        `SELECT c.*, 
-                COUNT(ch.id) as check_count,
-                MAX(ch.checked_at) as last_check
-         FROM competitors c
-         LEFT JOIN checks ch ON c.id = ch.competitor_id
-         GROUP BY c.id
-         ORDER BY c.created_at DESC`
-      )
-      .all();
+    const result = await pool.query(`
+      SELECT c.id, c.name, c.url, c.tags, c.created_at, c.updated_at,
+             COUNT(ch.id) as check_count,
+             MAX(ch.checked_at) as last_check
+      FROM competitors c
+      LEFT JOIN checks ch ON c.id = ch.competitor_id
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+    `);
 
-    const enriched = competitors.map((c) => ({
+    const enriched = result.rows.map((c) => ({
       ...c,
-      tags: JSON.parse(c.tags || '[]'),
+      tags: c.tags || [],
     }));
 
     res.json(enriched);
@@ -182,7 +192,7 @@ app.get('/api/competitors', (req, res) => {
 });
 
 // Add competitor
-app.post('/api/competitors', (req, res) => {
+app.post('/api/competitors', async (req, res) => {
   try {
     const { name, url, tags } = req.body;
 
@@ -190,14 +200,20 @@ app.post('/api/competitors', (req, res) => {
       return res.status(400).json({ error: 'Name and URL required' });
     }
 
-    const stmt = db.prepare(
-      'INSERT INTO competitors (name, url, tags) VALUES (?, ?, ?)'
+    const result = await pool.query(
+      'INSERT INTO competitors (name, url, tags) VALUES ($1, $2, $3) RETURNING id, name, url, tags',
+      [name, url, JSON.stringify(tags || [])]
     );
-    const result = stmt.run(name, url, JSON.stringify(tags || []));
 
-    res.json({ id: result.lastInsertRowid, name, url, tags: tags || [] });
+    const row = result.rows[0];
+    res.json({ 
+      id: row.id, 
+      name: row.name, 
+      url: row.url, 
+      tags: row.tags 
+    });
   } catch (error) {
-    if (error.message.includes('UNIQUE constraint failed')) {
+    if (error.message.includes('duplicate key')) {
       return res.status(400).json({ error: 'URL already exists' });
     }
     res.status(500).json({ error: error.message });
@@ -205,10 +221,10 @@ app.post('/api/competitors', (req, res) => {
 });
 
 // Delete competitor
-app.delete('/api/competitors/:id', (req, res) => {
+app.delete('/api/competitors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM competitors WHERE id = ?').run(id);
+    await pool.query('DELETE FROM competitors WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -220,13 +236,16 @@ app.post('/api/competitors/:id/check', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const competitor = db
-      .prepare('SELECT * FROM competitors WHERE id = ?')
-      .get(id);
+    const competitorResult = await pool.query(
+      'SELECT * FROM competitors WHERE id = $1',
+      [id]
+    );
 
-    if (!competitor) {
+    if (competitorResult.rows.length === 0) {
       return res.status(404).json({ error: 'Competitor not found' });
     }
+
+    const competitor = competitorResult.rows[0];
 
     // Fetch new content
     const content = await fetchContent(competitor.url);
@@ -236,11 +255,12 @@ app.post('/api/competitors/:id/check', async (req, res) => {
       .digest('hex');
 
     // Get last check
-    const lastCheck = db
-      .prepare(
-        'SELECT * FROM checks WHERE competitor_id = ? ORDER BY checked_at DESC LIMIT 1'
-      )
-      .get(id);
+    const lastCheckResult = await pool.query(
+      'SELECT * FROM checks WHERE competitor_id = $1 ORDER BY checked_at DESC LIMIT 1',
+      [id]
+    );
+
+    const lastCheck = lastCheckResult.rows[0];
 
     // Generate diff
     const diffInfo = generateDiff(lastCheck?.content, content);
@@ -249,17 +269,19 @@ app.post('/api/competitors/:id/check', async (req, res) => {
     const summary = await generateSummary(content, diffInfo);
 
     // Store check
-    const stmt = db.prepare(
-      'INSERT INTO checks (competitor_id, content, hash, summary, diff) VALUES (?, ?, ?, ?, ?)'
+    const checkResult = await pool.query(
+      'INSERT INTO checks (competitor_id, content, hash, summary, diff) VALUES ($1, $2, $3, $4, $5) RETURNING id, checked_at',
+      [id, content, hash, summary, diffInfo]
     );
-    const result = stmt.run(id, content, hash, summary, diffInfo);
+
+    const check = checkResult.rows[0];
 
     res.json({
-      id: result.lastInsertRowid,
+      id: check.id,
       hash,
       diff: diffInfo,
       summary,
-      checked_at: new Date().toISOString(),
+      checked_at: check.checked_at,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -267,21 +289,20 @@ app.post('/api/competitors/:id/check', async (req, res) => {
 });
 
 // Get competitor history (last 5 checks)
-app.get('/api/competitors/:id/history', (req, res) => {
+app.get('/api/competitors/:id/history', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const history = db
-      .prepare(
-        `SELECT id, checked_at, summary, diff, hash 
-         FROM checks 
-         WHERE competitor_id = ? 
-         ORDER BY checked_at DESC 
-         LIMIT 5`
-      )
-      .all(id);
+    const result = await pool.query(
+      `SELECT id, checked_at, summary, diff, hash 
+       FROM checks 
+       WHERE competitor_id = $1 
+       ORDER BY checked_at DESC 
+       LIMIT 5`,
+      [id]
+    );
 
-    res.json(history);
+    res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
