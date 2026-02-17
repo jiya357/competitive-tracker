@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    command: npm start
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    environment:
+      - VITE_API_URL=http://localhost:3001
