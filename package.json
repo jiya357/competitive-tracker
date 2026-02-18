@@ -6,7 +6,7 @@
   "scripts": {
     "install-all": "npm install && cd client && npm install && cd ../server && npm install",
     "build": "npm run install-all && cd client && npm run build",
-    "start": "cd server && npm start",
+    "start": "npm run install-all && cd server && npm start",
     "dev": "cd server && npm start",
     "railway:build": "npm run install-all && npm run build"
   },
