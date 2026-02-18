@@ -4,11 +4,13 @@
   "description": "Real-time competitive intelligence tracker",
   "main": "server/server.js",
   "scripts": {
-    "install": "npm run install-all",
+    "install": "npm install && npm run install-client && npm run install-server",
+    "install-client": "cd client && npm install",
+    "install-server": "cd server && npm install",
     "build": "cd client && npm install && npm run build",
     "start": "cd server && npm start",
     "dev": "cd server && npm start",
-    "install-all": "npm install && cd client && npm install && cd ../server && npm install"
+    "install-all": "npm install && npm run install-client && npm run install-server"
   },
   "keywords": ["competitive-intelligence", "tracker", "web"],
   "author": "Puneet",
