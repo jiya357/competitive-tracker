@@ -313,7 +313,7 @@ app.get('/api/competitors/:id/history', async (req, res) => {
 });
 
 // Fallback to React for client-side routing (must be after all API routes)
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 
