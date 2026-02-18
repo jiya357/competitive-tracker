@@ -15,7 +15,7 @@ function HistoryModal({ competitorId, competitorName, onClose }) {
     try {
       setLoading(true);
       const response = await fetch(
-        `http://localhost:3001/api/competitors/${competitorId}/history`
+        `/api/competitors/${competitorId}/history`
       );
       if (!response.ok) throw new Error('Failed to fetch history');
       const data = await response.json();

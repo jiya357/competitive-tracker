@@ -16,7 +16,7 @@ function App() {
 
   const checkBackendHealth = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/health');
+      const response = await fetch('/api/health');
       if (response.ok) {
         const data = await response.json();
         setBackendStatus(data);

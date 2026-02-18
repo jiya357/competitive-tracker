@@ -15,7 +15,7 @@ function HomePage({ onStatusUpdate }) {
   const fetchCompetitors = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/competitors');
+      const response = await fetch('/api/competitors');
       if (!response.ok) throw new Error('Failed to fetch competitors');
       const data = await response.json();
       setCompetitors(data);
@@ -30,7 +30,7 @@ function HomePage({ onStatusUpdate }) {
 
   const handleAddCompetitor = async (formData) => {
     try {
-      const response = await fetch('http://localhost:3001/api/competitors', {
+      const response = await fetch('/api/competitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -54,7 +54,7 @@ function HomePage({ onStatusUpdate }) {
     if (!window.confirm('Are you sure you want to delete this competitor?')) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/competitors/${id}`, {
+      const response = await fetch(`/api/competitors/${id}`, {
         method: 'DELETE',
       });
 
@@ -70,7 +70,7 @@ function HomePage({ onStatusUpdate }) {
 
   const handleCheckNow = async (id) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/competitors/${id}/check`, {
+      const response = await fetch(`/api/competitors/${id}/check`, {
         method: 'POST',
       });
 
