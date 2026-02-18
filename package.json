@@ -10,7 +10,7 @@
     "install-all": "cd client && npm ci && cd ../server && npm ci"
   },
   "keywords": ["competitive-intelligence", "tracker", "web"],
-  "author": "Puneet",
+  "author": "Jiya Mudgal",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0",
