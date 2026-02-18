@@ -20,8 +20,14 @@ const clientBuildPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientBuildPath));
 
 // PostgreSQL Pool setup
+const dbUrl = process.env.DATABASE_URL || 'postgresql://localhost/competitor_tracker';
+// Use public proxy URL in production if internal connection fails
+const finalDbUrl = dbUrl.includes('postgres.railway.internal') 
+  ? dbUrl.replace('postgres.railway.internal:5432/railway', 'turntable.proxy.rlwy.net:34852/railway')
+  : dbUrl;
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost/competitor_tracker',
+  connectionString: finalDbUrl,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 
