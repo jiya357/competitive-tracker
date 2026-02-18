@@ -4,14 +4,16 @@
   "description": "Real-time competitive intelligence tracker",
   "main": "server/server.js",
   "scripts": {
-    "build": "npm run install-client && npm run install-server && cd client && npm run build",
-    "install-client": "cd client && npm ci",
-    "install-server": "cd server && npm ci",
+    "build": "echo 'Installing client dependencies...' && cd client && npm ci && echo 'Installing server dependencies...' && cd ../server && npm ci && echo 'Building client...' && cd ../client && npm run build",
     "start": "cd server && npm start",
     "dev": "cd server && npm start",
-    "install-all": "npm run install-client && npm run install-server"
+    "install-all": "cd client && npm ci && cd ../server && npm ci"
   },
   "keywords": ["competitive-intelligence", "tracker", "web"],
   "author": "Puneet",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
 }
